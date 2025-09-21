@@ -2,7 +2,9 @@
 
 A powerful Neovim plugin that makes it easy to **edit escaped strings** in code. StringBreaker provides intuitive commands and a flexible API, supporting both normal mode (using Tree-sitter) and visual mode (no dependencies required).
 
-[![asciicast](https://asciinema.org/a/N3UvVLXNpfxz0pC8TLrVXt1SL.svg)](https://asciinema.org/a/N3UvVLXNpfxz0pC8TLrVXt1SL)
+![StringBreaker Demo](assets/StringBreaker.gif)
+
+> **📹 Demo Recording**: [View demo on asciinema](https://asciinema.org/a/N3UvVLXNpfxz0pC8TLrVXt1SL) | [Download GIF](assets/StringBreaker.gif)
 
 ## Features
 
@@ -25,7 +27,7 @@ A powerful Neovim plugin that makes it easy to **edit escaped strings** in code.
 
 ```lua
 {
-  "duqcyxwd/nvim-stringbreaker",
+  "duqcyxwd/stringbreaker.nvim",
   dependencies = { 
     "nvim-treesitter/nvim-treesitter" 
   },
@@ -39,7 +41,7 @@ A powerful Neovim plugin that makes it easy to **edit escaped strings** in code.
 
 ```lua
 use {
-  "duqcyxwd/nvim-stringbreaker",
+  "duqcyxwd/stringbreaker.nvim",
   requires = { 
     "nvim-treesitter/nvim-treesitter" 
   },
