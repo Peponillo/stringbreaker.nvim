@@ -1,0 +1,205 @@
+local M = {}
+
+-- Check if a node type represents a string node
+-- @param node_type string: The type of the tree-sitter node
+-- @return boolean: True if the node type represents a string
+local function is_string_node_type(node_type)
+  -- Common string node types across different languages
+  local string_types = {
+    'string',
+    'string_literal',
+    'interpreted_string_literal',
+    'raw_string_literal',
+    'quoted_string',
+    'string_content',
+    'string_fragment',
+    'template_string',
+    'template_literal',
+    'string_value',
+    'literal_string',
+    'double_quoted_string',
+    'single_quoted_string',
+    'backtick_quoted_string'
+  }
+
+  for _, string_type in ipairs(string_types) do
+    if node_type == string_type then
+      return true
+    end
+  end
+
+  return false
+end
+
+-- Get the Tree-sitter node at the current cursor position
+-- @return TSNode|nil: The node at cursor position, or nil if not available
+function M.get_node_at_cursor()
+  -- Check if treesitter is available
+  local has_ts, ts = pcall(require, 'nvim-treesitter.ts_utils')
+  if not has_ts then
+    return nil
+  end
+
+  -- Get current buffer and check if it has a parser
+  local bufnr = vim.api.nvim_get_current_buf()
+  local filetype = vim.api.nvim_buf_get_option(bufnr, 'filetype')
+
+  -- Try to get parser for current buffer
+  local parser_ok, parser = pcall(vim.treesitter.get_parser, bufnr, filetype)
+  if not parser_ok or not parser then
+    return nil
+  end
+
+  -- Get current cursor position
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local row = cursor[1] - 1 -- Convert to 0-based indexing
+  local col = cursor[2]
+
+  -- Validate cursor position
+  local line_count = vim.api.nvim_buf_line_count(bufnr)
+  if row >= line_count or row < 0 then
+    return nil
+  end
+
+  -- Get the line and validate column position
+  local line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ''
+  if col > #line then
+    col = #line
+  end
+
+  -- Get the node at cursor position
+  local node = ts.get_node_at_cursor()
+  return node
+end
+
+-- Find the topmost string node from a given node (traverse up the tree to find the outermost string)
+-- @param node TSNode: Starting node to search from
+-- @return TSNode|nil: Topmost string node if found, nil otherwise
+function M.find_string_node(node)
+  if not node then
+    return nil
+  end
+
+  local current = node
+  local topmost_string_node = nil
+
+  -- Traverse up the tree to find all string nodes and keep the topmost one
+  while current do
+    local node_type = current:type()
+
+    -- Check if this is a string node type
+    if is_string_node_type(node_type) then
+      -- Keep track of this string node, but continue traversing up
+      -- to find if there's a higher-level string node
+      topmost_string_node = current
+    end
+
+    -- Move to parent node
+    current = current:parent()
+  end
+
+  return topmost_string_node
+end
+
+-- Detect string at cursor position and return string information
+-- @return table|nil: String information table or nil if no string found
+function M.detect_string_at_cursor()
+  -- Get node at cursor
+  local node = M.get_node_at_cursor()
+  if not node then
+    return nil
+  end
+
+  -- Find string node
+  local string_node = M.find_string_node(node)
+  if not string_node then
+    return nil
+  end
+
+  -- Get string content and position information
+  local start_row, start_col, end_row, end_col = string_node:range()
+
+  -- Validate the range
+  local bufnr = vim.api.nvim_get_current_buf()
+  local line_count = vim.api.nvim_buf_line_count(bufnr)
+  if start_row >= line_count or end_row >= line_count or start_row < 0 or end_row < 0 then
+    return nil
+  end
+
+  -- Get the text content of the string node
+  local lines = vim.api.nvim_buf_get_lines(bufnr, start_row, end_row + 1, false)
+
+  if not lines or #lines == 0 then
+    return nil
+  end
+
+  local content
+  if #lines == 1 then
+    -- Single line string
+    local line = lines[1] or ''
+    if start_col >= #line or end_col > #line then
+      return nil
+    end
+    content = string.sub(line, start_col + 1, end_col)
+  else
+    -- Multi-line string
+    content = ""
+    for i, line in ipairs(lines) do
+      if i == 1 then
+        -- First line: from start_col to end
+        if start_col < #line then
+          content = content .. string.sub(line, start_col + 1)
+        end
+      elseif i == #lines then
+        -- Last line: from beginning to end_col
+        if end_col > 0 then
+          content = content .. "\n" .. string.sub(line, 1, end_col)
+        end
+      else
+        -- Middle lines: full line
+        content = content .. "\n" .. line
+      end
+    end
+  end
+
+  -- Validate that we have actual content
+  if not content or content == '' then
+    return nil
+  end
+
+  -- Determine quote type by examining the first character
+  local quote_type = string.sub(content, 1, 1)
+  if quote_type ~= '"' and quote_type ~= "'" and quote_type ~= '`' then
+    -- Fallback: assume double quotes if we can't determine
+    quote_type = '"'
+  end
+
+  -- Extract inner content (without quotes)
+  local inner_content = content
+  if #content >= 2 then
+    local first_char = string.sub(content, 1, 1)
+    local last_char = string.sub(content, -1)
+
+    -- Check for matching quotes
+    if (first_char == '"' or first_char == "'" or first_char == '`') and
+        last_char == first_char then
+      inner_content = string.sub(content, 2, -2)
+      quote_type = first_char
+    end
+  end
+
+  -- Additional validation for malformed strings
+  if #content < 2 then
+    return nil
+  end
+
+  return {
+    content = content,
+    inner_content = inner_content,
+    start_pos = { start_row + 1, start_col }, -- Convert back to 1-based indexing
+    end_pos = { end_row + 1, end_col },
+    quote_type = quote_type
+  }
+end
+
+return M

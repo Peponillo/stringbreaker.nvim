@@ -1,0 +1,612 @@
+-- StringBreaker - Unified String Editing API
+-- Provides a simple interface to edit, preview and manage string content
+
+local M = {}
+
+-- Internal module references
+local string_detector = require('string-breaker.string_detector')
+local visual_handler = require('string-breaker.visual_handler')
+local escape_handler = require('string-breaker.escape_handler')
+local buffer_manager = require('string-breaker.buffer_manager')
+
+-- Configuration options
+local config = {
+  preview = {
+    max_length = 1000, -- Maximum preview content length
+    use_float = true,  -- Use floating window
+    width = 80,        -- Floating window width
+    height = 20        -- Floating window height
+  }
+}
+
+-- Check if Tree-sitter is available and properly configured
+local function check_treesitter()
+  -- Check if nvim-treesitter is available
+  local ok, ts = pcall(require, 'nvim-treesitter')
+  if not ok then
+    vim.notify(
+      'String Editor: nvim-treesitter plugin is required but not installed. Please install nvim-treesitter first.',
+      vim.log.levels.ERROR)
+    return false
+  end
+
+  -- Check if ts_utils is available
+  local ts_ok, ts_utils = pcall(require, 'nvim-treesitter.ts_utils')
+  if not ts_ok then
+    vim.notify(
+      'String Editor: nvim-treesitter.ts_utils is required but not available. Please ensure nvim-treesitter is properly configured.',
+      vim.log.levels.ERROR)
+    return false
+  end
+
+  -- Check if parser is available for current buffer
+  local bufnr = vim.api.nvim_get_current_buf()
+  local filetype = vim.api.nvim_buf_get_option(bufnr, 'filetype')
+
+  if filetype == '' then
+    vim.notify(
+      'String Editor: No filetype detected for current buffer. Tree-sitter requires a valid filetype to parse strings.',
+      vim.log.levels.WARN)
+    return false
+  end
+
+  -- Try to get parser for current filetype
+  local parser_ok, parser = pcall(vim.treesitter.get_parser, bufnr, filetype)
+  if not parser_ok or not parser then
+    vim.notify(
+      string.format(
+        'String Editor: No Tree-sitter parser available for filetype "%s". Please install the parser or check your Tree-sitter configuration.',
+        filetype), vim.log.levels.WARN)
+    return false
+  end
+
+  return true
+end
+
+-- Get current mode
+-- @return string 'normal', 'visual', or 'unknown'
+function M._get_mode()
+  if visual_handler.is_visual_mode() then
+    return 'visual'
+  end
+
+  local mode = vim.fn.mode()
+  if mode == 'n' then
+    return 'normal'
+  end
+
+  return 'unknown'
+end
+
+-- Handle string detection in normal mode
+-- @return table|nil String information or error information
+function M._handle_normal_mode()
+  -- Check if treesitter is available
+  if not check_treesitter() then
+    return {
+      success = false,
+      error_code = 'TREESITTER_UNAVAILABLE',
+      message =
+      'Normal mode requires Tree-sitter support. Please install nvim-treesitter or use visual mode to select text.',
+      suggestions = {
+        'Install and configure nvim-treesitter plugin',
+        'Use visual mode to select text for editing',
+        'Ensure current file type has corresponding Tree-sitter parser'
+      }
+    }
+  end
+
+  -- Detect string at cursor position
+  local string_info = string_detector.detect_string_at_cursor()
+  if not string_info then
+    return {
+      success = false,
+      error_code = 'NO_STRING_FOUND',
+      message =
+      'No string found at cursor position. Please place cursor inside string or use visual mode to select text.',
+      suggestions = {
+        'Move cursor inside string quotes',
+        'Use visual mode to select text for editing',
+        'Check if current file syntax is properly recognized'
+      }
+    }
+  end
+
+  -- Add source type information
+  string_info.source_type = 'treesitter'
+
+  return {
+    success = true,
+    data = string_info
+  }
+end
+
+-- Handle text selection in visual mode
+-- @return table|nil String information or error information
+function M._handle_visual_mode()
+  local string_info = visual_handler.get_current_visual_string_info()
+  if not string_info then
+    return {
+      success = false,
+      error_code = 'INVALID_SELECTION',
+      message = 'Invalid visual selection. Please select valid text content.',
+      suggestions = {
+        'Ensure non-empty text content is selected',
+        'Check if selection range is correct',
+        'Re-select text'
+      }
+    }
+  end
+
+  return {
+    success = true,
+    data = string_info
+  }
+end
+
+-- Start editing string (supports normal mode and visual mode)
+-- @return table API response
+function M.break_string()
+  local success, result = pcall(function()
+    -- Check if current buffer is modifiable
+    local current_bufnr = vim.api.nvim_get_current_buf()
+    if not vim.api.nvim_buf_get_option(current_bufnr, 'modifiable') then
+      return {
+        success = false,
+        error_code = 'BUFFER_NOT_MODIFIABLE',
+        message = 'Current buffer is not modifiable. Cannot edit string in read-only buffer.',
+        suggestions = {
+          'Check if file is read-only',
+          'Ensure you have file write permissions',
+          'Try using :set modifiable command'
+        }
+      }
+    end
+
+    -- Detect current mode and get string information
+    local mode = M._get_mode()
+    local string_result
+
+    if mode == 'visual' then
+      string_result = M._handle_visual_mode()
+    elseif mode == 'normal' then
+      string_result = M._handle_normal_mode()
+    else
+      return {
+        success = false,
+        error_code = 'UNSUPPORTED_MODE',
+        message = 'Unsupported editor mode. Please use this feature in normal mode or visual mode.',
+        suggestions = {
+          'Press Esc key to return to normal mode',
+          'Use v key to enter visual mode and select text',
+          'Check current editor state'
+        }
+      }
+    end
+
+    if not string_result.success then
+      return string_result
+    end
+
+    local string_info = string_result.data
+
+    -- Validate string content
+    if not string_info.inner_content or string_info.inner_content == '' then
+      return {
+        success = false,
+        error_code = 'EMPTY_CONTENT',
+        message = 'Empty string detected. No content to edit.',
+        suggestions = {
+          'Select text that contains content',
+          'Check if string actually contains text',
+          'Try selecting a larger text range'
+        }
+      }
+    end
+
+    -- Check string size (prevent performance issues)
+    if #string_info.inner_content > 10000 then
+      local choice = vim.fn.confirm(
+        'StringBreaker: This string is large (' ..
+        #string_info.inner_content .. ' characters). Editing may be slow. Continue?',
+        '&Yes\n&No',
+        2
+      )
+      if choice ~= 1 then
+        return {
+          success = false,
+          error_code = 'USER_CANCELLED',
+          message = 'User cancelled the editing operation.',
+          suggestions = {}
+        }
+      end
+    end
+
+    -- Unescape string content for editing
+    local unescaped_content = escape_handler.unescape(string_info.inner_content)
+
+    -- Prepare source information
+    local source_info = {
+      bufnr = current_bufnr,
+      start_pos = string_info.start_pos,
+      end_pos = string_info.end_pos,
+      quote_type = string_info.quote_type or '',
+      source_type = string_info.source_type,
+      original_content = string_info.content
+    }
+
+    -- Create editing buffer
+    local edit_bufnr = buffer_manager.create_edit_buffer(unescaped_content, source_info)
+
+    if edit_bufnr then
+      return {
+        success = true,
+        message = 'String opened for editing. Use :SaveString to save changes or close buffer to cancel editing.',
+        data = {
+          edit_buffer = edit_bufnr,
+          source_type = string_info.source_type,
+          content_length = #unescaped_content
+        }
+      }
+    else
+      return {
+        success = false,
+        error_code = 'BUFFER_CREATION_FAILED',
+        message = 'Failed to create editing buffer. Please try again.',
+        suggestions = {
+          'Check memory usage',
+          'Restart Neovim and try again',
+          'Check plugin configuration'
+        }
+      }
+    end
+  end)
+
+  if not success then
+    vim.notify(result, vim.log.levels.ERROR)
+    vim.notify(vim.inspect(result), vim.log.levels.ERROR)
+    return {
+      success = false,
+      error_code = 'UNEXPECTED_ERROR',
+      message = 'Unexpected error occurred while editing string: ' .. tostring(result),
+      suggestions = {
+        'Check plugin installation and configuration',
+        'Check Neovim logs for detailed information',
+        'Restart Neovim and try again'
+      }
+    }
+  end
+
+  -- For debug
+  -- vim.notify(result.message, vim.log.levels.INFO)
+  -- vim.notify(vim.inspect(result), vim.log.levels.INFO)
+
+  return result
+end
+
+-- Show preview content
+-- @param content string Content to preview
+-- @param source_type string Content source type
+local function show_preview(content, source_type)
+  -- Limit preview content length
+  local preview_content = content
+  if #content > config.preview.max_length then
+    preview_content = string.sub(content, 1, config.preview.max_length) ..
+        '\n\n[Content truncated - Total length: ' .. #content .. ' characters]'
+  end
+
+  if config.preview.use_float and #preview_content > 100 then
+    -- Use floating window to display longer content
+    M._show_float_preview(preview_content, source_type)
+  elseif #preview_content <= 200 then
+    -- Use notification to display short content
+    vim.notify('StringBreaker Preview (' .. source_type .. '):\n' .. preview_content, vim.log.levels.INFO)
+  else
+    -- Use echo area to display medium length content
+    vim.cmd('echo "StringBreaker Preview (' .. source_type .. '):"')
+    vim.cmd('echo ' .. vim.fn.string(preview_content))
+  end
+end
+
+-- Show floating window preview
+-- @param content string Preview content
+-- @param source_type string Content source type
+function M._show_float_preview(content, source_type)
+  -- Split content into lines
+  local lines = vim.split(content, '\n', { plain = true })
+
+  -- Calculate window dimensions
+  local width = math.min(config.preview.width, vim.o.columns - 4)
+  local height = math.min(config.preview.height, #lines + 2, vim.o.lines - 4)
+
+  -- Calculate window position (centered)
+  local row = math.floor((vim.o.lines - height) / 2)
+  local col = math.floor((vim.o.columns - width) / 2)
+
+  -- Create preview buffer
+  local preview_bufnr = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(preview_bufnr, 0, -1, false, lines)
+
+  -- Set buffer options
+  vim.api.nvim_buf_set_option(preview_bufnr, 'buftype', 'nofile')
+  vim.api.nvim_buf_set_option(preview_bufnr, 'swapfile', false)
+  vim.api.nvim_buf_set_option(preview_bufnr, 'bufhidden', 'wipe')
+  vim.api.nvim_buf_set_option(preview_bufnr, 'filetype', 'text')
+  vim.api.nvim_buf_set_option(preview_bufnr, 'modifiable', false)
+
+  -- Create floating window
+  local win_config = {
+    relative = 'editor',
+    width = width,
+    height = height,
+    row = row,
+    col = col,
+    style = 'minimal',
+    border = 'rounded',
+    title = ' StringBreaker Preview (' .. source_type .. ') ',
+    title_pos = 'center'
+  }
+
+  local preview_winnr = vim.api.nvim_open_win(preview_bufnr, false, win_config)
+
+  -- Set window options
+  vim.api.nvim_win_set_option(preview_winnr, 'wrap', true)
+  vim.api.nvim_win_set_option(preview_winnr, 'linebreak', true)
+
+  -- Set keymaps to close preview
+  local opts = { buffer = preview_bufnr, silent = true }
+  vim.keymap.set('n', 'q', function()
+    if vim.api.nvim_win_is_valid(preview_winnr) then
+      vim.api.nvim_win_close(preview_winnr, true)
+    end
+  end, opts)
+
+  vim.keymap.set('n', '<Esc>', function()
+    if vim.api.nvim_win_is_valid(preview_winnr) then
+      vim.api.nvim_win_close(preview_winnr, true)
+    end
+  end, opts)
+
+  -- Auto close preview (after 5 seconds or when losing focus)
+  vim.defer_fn(function()
+    if vim.api.nvim_win_is_valid(preview_winnr) then
+      vim.api.nvim_win_close(preview_winnr, true)
+    end
+  end, 5000)
+
+  -- Show usage hint
+  vim.notify('Preview displayed. Press q or Esc to close, auto-closes after 5 seconds.', vim.log.levels.INFO)
+end
+
+-- Preview string content (without opening editor)
+-- @return table API response
+function M.preview()
+  local success, result = pcall(function()
+    -- Detect current mode and get string information
+    local mode = M._get_mode()
+    local string_result
+
+    if mode == 'visual' then
+      string_result = M._handle_visual_mode()
+    elseif mode == 'normal' then
+      string_result = M._handle_normal_mode()
+    else
+      return {
+        success = false,
+        error_code = 'UNSUPPORTED_MODE',
+        message = 'Unsupported editor mode. Please use preview feature in normal mode or visual mode.'
+      }
+    end
+
+    if not string_result.success then
+      return string_result
+    end
+
+    local string_info = string_result.data
+
+    -- Validate string content
+    if not string_info.inner_content or string_info.inner_content == '' then
+      return {
+        success = false,
+        error_code = 'EMPTY_CONTENT',
+        message = 'No content to preview.'
+      }
+    end
+
+    -- Unescape string content
+    local unescaped_content = escape_handler.unescape(string_info.inner_content)
+
+    -- Show preview
+    show_preview(unescaped_content, string_info.source_type)
+
+    return {
+      success = true,
+      message = 'String preview displayed.',
+      data = {
+        content = unescaped_content,
+        source_type = string_info.source_type,
+        length = #unescaped_content
+      }
+    }
+  end)
+
+  if not success then
+    return {
+      success = false,
+      error_code = 'UNEXPECTED_ERROR',
+      message = 'Unexpected error occurred while previewing string: ' .. tostring(result)
+    }
+  end
+
+  return result
+end
+
+-- Save string to original file
+-- @return table API response
+function M.save()
+  -- Use pcall for comprehensive error handling
+  local success, result = pcall(function()
+    -- Get current buffer number
+    local current_bufnr = vim.api.nvim_get_current_buf()
+
+    -- Check if current buffer is a stringBreaker buffer
+    local filetype = vim.api.nvim_buf_get_option(current_bufnr, 'filetype')
+    if filetype ~= 'stringBreaker' then
+      vim.notify(
+        'String Editor: SaveString command can only be used in string editor buffers. Current buffer type: ' ..
+        (filetype or 'none'), vim.log.levels.WARN)
+      return
+    end
+
+    -- Get source information for this buffer
+    local source_info = buffer_manager.get_source_info(current_bufnr)
+    if not source_info then
+      vim.notify(
+        'String Editor: No source information found for this buffer. The original file reference may have been lost.',
+        vim.log.levels.ERROR)
+      return
+    end
+
+    -- Validate that the original buffer still exists and is valid
+    if not vim.api.nvim_buf_is_valid(source_info.bufnr) then
+      vim.notify('String Editor: Original buffer is no longer valid. Cannot save changes.', vim.log.levels.ERROR)
+      return
+    end
+
+    -- Check if original buffer is still modifiable
+    if not vim.api.nvim_buf_get_option(source_info.bufnr, 'modifiable') then
+      vim.notify('String Editor: Original buffer is no longer modifiable. Cannot save changes.', vim.log.levels.ERROR)
+      return
+    end
+
+    -- Get content from edit buffer
+    local lines = vim.api.nvim_buf_get_lines(current_bufnr, 0, -1, false)
+    local edited_content = table.concat(lines, '\n')
+
+    -- Check if content has actually changed
+    local original_unescaped = escape_handler.unescape(source_info.original_content and
+      source_info.original_content:sub(2, -2) or '')
+    if edited_content == original_unescaped then
+      vim.notify('String Editor: No changes detected. Closing editor without modifying original file.',
+        vim.log.levels.INFO)
+      buffer_manager.get_content_and_close(current_bufnr)
+      vim.api.nvim_set_current_buf(source_info.bufnr)
+      return
+    end
+
+    -- Escape the content for saving back to original file
+    local escaped_content = escape_handler.escape(edited_content, source_info.quote_type)
+
+    -- Add quotes back to the escaped content
+    local full_content = source_info.quote_type .. escaped_content .. source_info.quote_type
+
+    -- Validate the replacement positions are still valid
+    local original_lines = vim.api.nvim_buf_line_count(source_info.bufnr)
+    if source_info.start_pos[1] > original_lines or source_info.end_pos[1] > original_lines then
+      vim.notify('String Editor: Original file has been modified. Cannot safely save changes to the original location.',
+        vim.log.levels.ERROR)
+      return
+    end
+
+    -- Close the edit buffer first
+    buffer_manager.get_content_and_close(current_bufnr)
+
+    -- Switch to the original buffer
+    vim.api.nvim_set_current_buf(source_info.bufnr)
+
+    -- Replace the string content in the original file
+    -- Convert to 0-based positions for nvim_buf_set_text
+    local start_row = source_info.start_pos[1] - 1
+    local start_col = source_info.start_pos[2]
+    local end_row = source_info.end_pos[1] - 1
+    local end_col = source_info.end_pos[2]
+
+    -- Split the full content into lines for replacement
+    local replacement_lines = vim.split(full_content, '\n', { plain = true })
+
+    -- Replace the text in the original buffer
+    vim.api.nvim_buf_set_text(source_info.bufnr, start_row, start_col, end_row, end_col, replacement_lines)
+  end)
+
+  if not success then
+    -- Provide more specific error messages
+    local error_msg = tostring(result)
+    if error_msg:find('Invalid buffer') then
+      vim.notify('String Editor: Buffer operation failed. The buffer may have been closed or corrupted.',
+        vim.log.levels.ERROR)
+    elseif error_msg:find('position') then
+      vim.notify('String Editor: Position error occurred. The original file may have been modified.',
+        vim.log.levels.ERROR)
+    else
+      vim.notify('String Editor: Unexpected error occurred while saving: ' .. error_msg, vim.log.levels.ERROR)
+    end
+  end
+end
+
+-- Cancel editing without saving changes
+-- @return table API response
+function M.cancel()
+  local success, result = pcall(function()
+    local current_bufnr = vim.api.nvim_get_current_buf()
+
+    -- Check if in string editing buffer
+    local filetype = vim.api.nvim_buf_get_option(current_bufnr, 'filetype')
+    if filetype ~= 'stringBreaker' then
+      return {
+        success = false,
+        error_code = 'NOT_IN_EDIT_BUFFER',
+        message = 'cancel() can only be used in string editing buffer.',
+        suggestions = {
+          'Ensure this function is called in string editing buffer',
+          'Use break() or break_string() function to start editing string'
+        }
+      }
+    end
+
+    -- Get source information
+    local source_info = buffer_manager.get_source_info(current_bufnr)
+    if source_info then
+      -- Close editing buffer
+      buffer_manager.get_content_and_close(current_bufnr)
+
+      -- Switch back to original buffer
+      if vim.api.nvim_buf_is_valid(source_info.bufnr) then
+        vim.api.nvim_set_current_buf(source_info.bufnr)
+      end
+    else
+      -- Force close buffer
+      vim.api.nvim_buf_delete(current_bufnr, { force = true })
+    end
+
+    return {
+      success = true,
+      message = 'Editing cancelled. Original file unchanged.'
+    }
+  end)
+
+  if not success then
+    return {
+      success = false,
+      error_code = 'CANCEL_FAILED',
+      message = 'Error occurred while cancelling edit: ' .. tostring(result)
+    }
+  end
+
+  return result
+end
+
+-- Configure StringBreaker
+-- @param opts table Configuration options
+function M.setup(opts)
+  if opts then
+    config = vim.tbl_deep_extend('force', config, opts)
+  end
+end
+
+-- Get current configuration
+-- @return table Current configuration
+function M.get_config()
+  return vim.deepcopy(config)
+end
+
+return M

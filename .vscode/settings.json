@@ -1,0 +1,5 @@
+{
+  "kiroAgent.configureMCP": "Disabled",
+  "Lua.diagnostics.globals": ["vim"],
+  "python.languageServer": "None"
+}

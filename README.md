@@ -1,1 +1,183 @@
-HI
+# StringBreaker - Neovim Escaped Strings Editor Plugin
+
+A powerful Neovim plugin that makes it easy to **edit escaped strings** in code. StringBreaker provides intuitive commands and a flexible API, supporting both normal mode (using Tree-sitter) and visual mode (no dependencies required).
+
+[![asciicast](https://asciinema.org/a/N3UvVLXNpfxz0pC8TLrVXt1SL.svg)](https://asciinema.org/a/N3UvVLXNpfxz0pC8TLrVXt1SL)
+
+## Features
+
+- 🎯 **Smart String Detection**: Automatically detect strings at cursor position using Tree-sitter
+- 👁️ **Visual Mode Support**: Select any text for editing, no Tree-sitter required  
+- 🔍 **Preview Functionality**: Quick preview of unescaped string content
+- 🛠️ **Unified API**: Clean Lua API for scripts and plugin integration
+- 🔄 **Enhanced Buffer Management**: Optimized buffer handling and memory usage
+- ⚡ **Multi-mode Support**: Works in normal mode and visual mode seamlessly
+
+## Requirements
+
+- Neovim 0.7+
+- [nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter) (optional, for normal mode string detection)
+- Tree-sitter parsers for languages you want to edit (optional)
+
+## Installation
+
+### Using [lazy.nvim](https://github.com/folke/lazy.nvim)
+
+```lua
+{
+  "duqcyxwd/nvim-stringbreaker",
+  dependencies = { 
+    "nvim-treesitter/nvim-treesitter" 
+  },
+  config = function()
+    require("string-breaker").setup()
+  end,
+}
+```
+
+### Using [packer.nvim](https://github.com/wbthomason/packer.nvim)
+
+```lua
+use {
+  "duqcyxwd/nvim-stringbreaker",
+  requires = { 
+    "nvim-treesitter/nvim-treesitter" 
+  },
+  config = function()
+    require("string-breaker").setup()
+  end,
+}
+```
+
+## Quick Start
+
+### Basic Workflow
+
+1. **Position your cursor** inside any string in your code, or select text in visual mode
+2. **Run `:BreakString`** to open the string/text in an editing buffer
+3. **Edit the content** in the temporary buffer (escape sequences are automatically unescaped)
+4. **Run `:SaveString`** to save changes back to the original file
+5. **Or run `:BreakStringCancel`** to cancel editing without changes
+
+### Commands
+
+- `:BreakString` - Extract and edit the string at cursor position or visual selection
+- `:PreviewString` - Preview unescaped string content without opening editor
+- `:SaveString` - Save edited content back to original file (only in string editor buffers)
+- `:BreakStringCancel` - Cancel editing without saving changes
+
+### Example
+
+Given this JavaScript code:
+```javascript
+const message = "Hello\\nWorld\\t\"Quote\"";
+```
+
+1. Place cursor inside the string or select it
+2. Run `:BreakString`
+3. Edit in the temporary buffer:
+```
+Hello
+World	"Quote"
+```
+4. Run `:SaveString` to update the original file
+
+## Usage Modes
+
+### Normal Mode (Tree-sitter)
+- **How**: Place cursor inside any string literal
+- **Requirements**: nvim-treesitter with appropriate language parser
+- **Benefits**: Automatic string detection and boundary identification
+
+### Visual Mode (No dependencies)
+- **How**: Select any text, then run `:BreakString`
+- **Requirements**: None
+- **Benefits**: Works with any text, even partial strings or complex content
+
+## Supported Languages
+
+The plugin works with any programming language that has Tree-sitter support for normal mode, including:
+
+- JavaScript/TypeScript
+- Python  
+- Lua
+- Java
+- And many more...
+
+Visual mode works with any file type.
+
+## Configuration
+
+### Basic Setup
+
+```lua
+require("string-breaker").setup({
+  preview = {
+    max_length = 1000,    -- Maximum preview content length
+    use_float = true,     -- Use floating window for preview
+    width = 100,           -- Floating window width  
+    height = 4           -- Floating window height
+  }
+})
+```
+
+### Suggested Keybindings
+
+```lua
+local stringBreaker = require('string-breaker')
+
+--- keybindings example
+vim.keymap.set({'n', 'v'}, '<space>fes', stringBreaker.break_string, { desc = 'Break string for editing' })
+vim.keymap.set({'n', 'v'}, '<space>fep', stringBreaker.preview, { desc = 'Preview string content' })
+vim.keymap.set('n', '<space>fec', stringBreaker.cancel, { desc = 'Cancel string editing' })
+
+
+-- Auto-keybindings in string editor buffers
+vim.api.nvim_create_autocmd('FileType', {
+  pattern = 'stringBreaker',
+  callback = function()
+    local opts = { buffer = true, silent = true }
+    vim.keymap.set('n', '<space>fs', stringBreaker.save, opts)
+    vim.keymap.set('n', '<space>qq', stringBreaker.cancel, opts)
+  end
+})
+
+```
+
+## Lua API
+
+StringBreaker provides a clean Lua API for advanced usage:
+
+```lua
+local stringBreaker = require('string-breaker')
+
+-- Start editing string/selection
+local result = stringBreaker.break_string()
+if result.success then
+  print("Editing started: " .. result.message)
+else
+  print("Error: " .. result.message)
+end
+
+-- Preview string content
+local result = stringBreaker.preview()
+if result.success then
+  print("Content length: " .. result.data.length)
+end
+
+-- Save changes (in editing buffer)
+stringBreaker.save()
+
+-- Cancel editing (in editing buffer)  
+stringBreaker.cancel()
+```
+
+All API functions return standardized response objects with `success`, `message`, `error_code`, and `data` fields.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit issues and pull requests.
+
+## License
+
+MIT License - see LICENSE file for details.
