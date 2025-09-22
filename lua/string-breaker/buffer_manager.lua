@@ -23,7 +23,8 @@ function M.create_edit_buffer(content, source_info)
   vim.api.nvim_buf_set_option(bufnr, 'filetype', 'stringBreaker')
 
   -- Set buffer as temporary buffer
-  vim.api.nvim_buf_set_option(bufnr, 'buftype', 'nofile')
+  -- vim.api.nvim_buf_set_option(bufnr, 'buftype', 'nofile')
+  vim.api.nvim_buf_set_option(bufnr, 'buftype', 'acwrite')
   vim.api.nvim_buf_set_option(bufnr, 'swapfile', false)
   vim.api.nvim_buf_set_option(bufnr, 'bufhidden', 'wipe')
 
@@ -33,17 +34,12 @@ function M.create_edit_buffer(content, source_info)
   -- Store source file information
   M.store_source_info(bufnr, source_info)
 
-  -- Set autocmd to handle cleanup when buffer is closed
-  vim.api.nvim_create_autocmd({ 'BufWipeout', 'BufDelete' }, {
+  vim.api.nvim_create_autocmd('BufWriteCmd', {
     buffer = bufnr,
-    callback = function()
-      -- Clean up source file information storage
-      if source_info_store[bufnr] then
-        source_info_store[bufnr] = nil
-        vim.notify('String Editor: Edit cancelled. Original file unchanged.', vim.log.levels.INFO)
-      end
+    callback = function(args)
+      require('string-breaker').sync()
+      vim.api.nvim_buf_set_option(bufnr, 'modified', false)
     end,
-    once = true
   })
 
   -- Open buffer in new window
@@ -58,13 +54,6 @@ function M.create_edit_buffer(content, source_info)
   -- Set some useful buffer options
   vim.api.nvim_buf_set_option(bufnr, 'wrap', true)
   vim.api.nvim_buf_set_option(bufnr, 'linebreak', true)
-
-  -- Add some useful key mappings
-  local opts = { buffer = bufnr, silent = true }
-  vim.keymap.set('n', '<leader>s', ':SaveString<CR>',
-    vim.tbl_extend('force', opts, { desc = 'Save string to original file' }))
-  vim.keymap.set('n', '<leader>q', ':q<CR>',
-    vim.tbl_extend('force', opts, { desc = 'Cancel edit (close without saving)' }))
 
   return bufnr
 end
