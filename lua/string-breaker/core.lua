@@ -32,9 +32,9 @@ local function check_treesitter()
 
   -- Check if ts_utils is available
   local ts_ok, ts_utils = pcall(require, 'nvim-treesitter.ts_utils')
-  if not ts_ok then
+  if not ts_ok and not ts.get_installed then
     vim.notify(
-      'String Editor: nvim-treesitter.ts_utils is required but not available. Please ensure nvim-treesitter is properly configured.',
+      'String Editor: nvim-treesitter.ts_utils or treesitter **main** branch is required but not available. Please ensure nvim-treesitter is properly configured.',
       vim.log.levels.ERROR)
     return false
   end
