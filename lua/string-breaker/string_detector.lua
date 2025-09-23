@@ -31,6 +31,50 @@ local function is_string_node_type(node_type)
   return false
 end
 
+-- Check if Tree-sitter is available and properly configured
+local function check_treesitter()
+  -- Check if nvim-treesitter is available
+  local ok, ts = pcall(require, 'nvim-treesitter')
+  if not ok then
+    vim.notify(
+      'String Editor: nvim-treesitter plugin is required but not installed. Please install nvim-treesitter first.',
+      vim.log.levels.ERROR)
+    return false
+  end
+
+  -- Check if ts_utils is available
+  local ts_ok, ts_utils = pcall(require, 'nvim-treesitter.ts_utils')
+  if not ts_ok then
+    vim.notify(
+      'String Editor: nvim-treesitter.ts_utils is required but not available. Please ensure nvim-treesitter is properly configured.',
+      vim.log.levels.ERROR)
+    return false
+  end
+
+  -- Check if parser is available for current buffer
+  local bufnr = vim.api.nvim_get_current_buf()
+  local filetype = vim.api.nvim_buf_get_option(bufnr, 'filetype')
+
+  if filetype == '' then
+    vim.notify(
+      'String Editor: No filetype detected for current buffer. Tree-sitter requires a valid filetype to parse strings.',
+      vim.log.levels.WARN)
+    return false
+  end
+
+  -- Try to get parser for current filetype
+  local parser_ok, parser = pcall(vim.treesitter.get_parser, bufnr, filetype)
+  if not parser_ok or not parser then
+    vim.notify(
+      string.format(
+        'String Editor: No Tree-sitter parser available for filetype "%s". Please install the parser or check your Tree-sitter configuration.',
+        filetype), vim.log.levels.WARN)
+    return false
+  end
+
+  return true
+end
+
 -- Get the Tree-sitter node at the current cursor position
 -- @return TSNode|nil: The node at cursor position, or nil if not available
 function M.get_node_at_cursor()
@@ -104,6 +148,20 @@ end
 -- Detect string at cursor position and return string information
 -- @return table|nil: String information table or nil if no string found
 function M.detect_string_at_cursor()
+  -- Check if treesitter is available
+  if not check_treesitter() then
+    return {
+      success = false,
+      error_code = 'TREESITTER_UNAVAILABLE',
+      message =
+      'Normal mode requires Tree-sitter support. Please install nvim-treesitter or use visual mode to select text.',
+      suggestions = {
+        'Install and configure nvim-treesitter plugin',
+        'Use visual mode to select text for editing',
+        'Ensure current file type has corresponding Tree-sitter parser'
+      }
+    }
+  end
   -- Get node at cursor
   local node = M.get_node_at_cursor()
   if not node then
