@@ -84,33 +84,6 @@ function M.get_node_at_cursor()
     return nil
   end
 
-  -- Get current buffer and check if it has a parser
-  local bufnr = vim.api.nvim_get_current_buf()
-  local filetype = vim.api.nvim_buf_get_option(bufnr, 'filetype')
-
-  -- Try to get parser for current buffer
-  local parser_ok, parser = pcall(vim.treesitter.get_parser, bufnr, filetype)
-  if not parser_ok or not parser then
-    return nil
-  end
-
-  -- Get current cursor position
-  local cursor = vim.api.nvim_win_get_cursor(0)
-  local row = cursor[1] - 1 -- Convert to 0-based indexing
-  local col = cursor[2]
-
-  -- Validate cursor position
-  local line_count = vim.api.nvim_buf_line_count(bufnr)
-  if row >= line_count or row < 0 then
-    return nil
-  end
-
-  -- Get the line and validate column position
-  local line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ''
-  if col > #line then
-    col = #line
-  end
-
   -- Get the node at cursor position
   local node = ts.get_node_at_cursor()
   return node
@@ -171,6 +144,7 @@ function M.detect_string_at_cursor()
   -- Find string node
   local string_node = M.find_string_node(node)
   if not string_node then
+    vim.notify('No string node found', vim.log.levels.WARN)
     return nil
   end
 
@@ -179,46 +153,9 @@ function M.detect_string_at_cursor()
 
   -- Validate the range
   local bufnr = vim.api.nvim_get_current_buf()
-  local line_count = vim.api.nvim_buf_line_count(bufnr)
-  if start_row >= line_count or end_row >= line_count or start_row < 0 or end_row < 0 then
-    return nil
-  end
-
   -- Get the text content of the string node
-  local lines = vim.api.nvim_buf_get_lines(bufnr, start_row, end_row + 1, false)
+  local content = vim.treesitter.get_node_text(string_node, bufnr)
 
-  if not lines or #lines == 0 then
-    return nil
-  end
-
-  local content
-  if #lines == 1 then
-    -- Single line string
-    local line = lines[1] or ''
-    if start_col >= #line or end_col > #line then
-      return nil
-    end
-    content = string.sub(line, start_col + 1, end_col)
-  else
-    -- Multi-line string
-    content = ""
-    for i, line in ipairs(lines) do
-      if i == 1 then
-        -- First line: from start_col to end
-        if start_col < #line then
-          content = content .. string.sub(line, start_col + 1)
-        end
-      elseif i == #lines then
-        -- Last line: from beginning to end_col
-        if end_col > 0 then
-          content = content .. "\n" .. string.sub(line, 1, end_col)
-        end
-      else
-        -- Middle lines: full line
-        content = content .. "\n" .. line
-      end
-    end
-  end
 
   -- Validate that we have actual content
   if not content or content == '' then
