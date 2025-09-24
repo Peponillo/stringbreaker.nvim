@@ -79,6 +79,14 @@ end
 -- @return TSNode|nil: The node at cursor position, or nil if not available
 function M.get_node_at_cursor()
   -- Check if treesitter is available
+  local ok, ts = pcall(require, 'nvim-treesitter')
+  if not ok then
+    return nil
+  end
+    if ts.get_installed then
+      return M.get_node_at_cursor_new()
+    end
+
   local has_ts, ts = pcall(require, 'nvim-treesitter.ts_utils')
   if not has_ts then
     return nil
@@ -87,6 +95,28 @@ function M.get_node_at_cursor()
   -- Get the node at cursor position
   local node = ts.get_node_at_cursor()
   return node
+end
+
+-- Get the Tree-sitter node at the current cursor position
+-- @return TSNode|nil: The node at cursor position, or nil if not available
+function M.get_node_at_cursor_new()
+  local ts = vim.treesitter
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local cursor_range = { cursor[1] - 1, cursor[2] }
+  local buf = vim.api.nvim_get_current_buf()
+  local filetype = vim.api.nvim_get_option_value("filetype", { buf = buf })
+  local ok, parser = pcall(ts.get_parser, buf, filetype)
+  if not ok or not parser then
+    return
+  end
+  local root_tree = parser:parse()[1]
+  local root = root_tree and root_tree:root()
+
+  if not root then
+    return
+  end
+
+  return root:named_descendant_for_range(cursor_range[1], cursor_range[2], cursor_range[1], cursor_range[2])
 end
 
 -- Find the topmost string node from a given node (traverse up the tree to find the outermost string)
