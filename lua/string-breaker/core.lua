@@ -81,23 +81,11 @@ end
 -- Handle string detection in normal mode
 -- @return table|nil String information or error information
 function M._handle_normal_mode()
-  -- Check if treesitter is available
-  if not check_treesitter() then
-    return {
-      success = false,
-      error_code = 'TREESITTER_UNAVAILABLE',
-      message =
-      'Normal mode requires Tree-sitter support. Please install nvim-treesitter or use visual mode to select text.',
-      suggestions = {
-        'Install and configure nvim-treesitter plugin',
-        'Use visual mode to select text for editing',
-        'Ensure current file type has corresponding Tree-sitter parser'
-      }
-    }
+  local string_info, detection_err = string_detector.detect_string_at_cursor()
+  if detection_err then
+    return detection_err
   end
 
-  -- Detect string at cursor position
-  local string_info = string_detector.detect_string_at_cursor()
   if not string_info then
     return {
       success = false,
@@ -328,7 +316,7 @@ function M._show_float_preview(content, source_type)
   vim.api.nvim_buf_set_lines(preview_bufnr, 0, -1, false, lines)
 
   -- Set buffer options
-  vim.api.nvim_buf_set_option(preview_bufnr, 'buftype', 'nofile')
+  -- vim.api.nvim_buf_set_option(preview_bufnr, 'buftype', 'nofile')
   vim.api.nvim_buf_set_option(preview_bufnr, 'swapfile', false)
   vim.api.nvim_buf_set_option(preview_bufnr, 'bufhidden', 'wipe')
   vim.api.nvim_buf_set_option(preview_bufnr, 'filetype', 'text')
@@ -441,9 +429,9 @@ function M.preview()
   return result
 end
 
--- Save string to original file
+-- Synchronize buffer content with the original file
 -- @return table API response
-function M.save()
+function M.sync()
   -- Use pcall for comprehensive error handling
   local success, result = pcall(function()
     -- Get current buffer number
@@ -452,31 +440,56 @@ function M.save()
     -- Check if current buffer is a stringBreaker buffer
     local filetype = vim.api.nvim_buf_get_option(current_bufnr, 'filetype')
     if filetype ~= 'stringBreaker' then
-      vim.notify(
-        'String Editor: SaveString command can only be used in string editor buffers. Current buffer type: ' ..
-        (filetype or 'none'), vim.log.levels.WARN)
-      return
+      return {
+        success = false,
+        error_code = 'NOT_IN_EDIT_BUFFER',
+        message = 'sync() can only be used in string editor buffers. Current buffer type: ' .. (filetype or 'none'),
+        suggestions = {
+          'Ensure this function is called in string editor buffer',
+          'Use break_string() function to start editing string'
+        }
+      }
     end
 
     -- Get source information for this buffer
     local source_info = buffer_manager.get_source_info(current_bufnr)
     if not source_info then
-      vim.notify(
-        'String Editor: No source information found for this buffer. The original file reference may have been lost.',
-        vim.log.levels.ERROR)
-      return
+      return {
+        success = false,
+        error_code = 'NO_SOURCE_INFO',
+        message = 'No source information found for this buffer. The original file reference may have been lost.',
+        suggestions = {
+          'Try restarting the string editing session',
+          'Check if original buffer still exists'
+        }
+      }
     end
 
     -- Validate that the original buffer still exists and is valid
     if not vim.api.nvim_buf_is_valid(source_info.bufnr) then
-      vim.notify('String Editor: Original buffer is no longer valid. Cannot save changes.', vim.log.levels.ERROR)
-      return
+      return {
+        success = false,
+        error_code = 'INVALID_SOURCE_BUFFER',
+        message = 'Original buffer is no longer valid. Cannot synchronize changes.',
+        suggestions = {
+          'Original buffer may have been closed',
+          'Try canceling and restarting the editing session'
+        }
+      }
     end
 
     -- Check if original buffer is still modifiable
     if not vim.api.nvim_buf_get_option(source_info.bufnr, 'modifiable') then
-      vim.notify('String Editor: Original buffer is no longer modifiable. Cannot save changes.', vim.log.levels.ERROR)
-      return
+      return {
+        success = false,
+        error_code = 'BUFFER_NOT_MODIFIABLE',
+        message = 'Original buffer is no longer modifiable. Cannot synchronize changes.',
+        suggestions = {
+          'Check if file is read-only',
+          'Ensure you have file write permissions',
+          'Try using :set modifiable command'
+        }
+      }
     end
 
     -- Get content from edit buffer
@@ -487,11 +500,14 @@ function M.save()
     local original_unescaped = escape_handler.unescape(source_info.original_content and
       source_info.original_content:sub(2, -2) or '')
     if edited_content == original_unescaped then
-      vim.notify('String Editor: No changes detected. Closing editor without modifying original file.',
-        vim.log.levels.INFO)
-      buffer_manager.get_content_and_close(current_bufnr)
-      vim.api.nvim_set_current_buf(source_info.bufnr)
-      return
+      return {
+        success = true,
+        message = 'No changes detected. Content is already synchronized.',
+        data = {
+          changed = false,
+          content_length = #edited_content
+        }
+      }
     end
 
     -- Escape the content for saving back to original file
@@ -503,16 +519,17 @@ function M.save()
     -- Validate the replacement positions are still valid
     local original_lines = vim.api.nvim_buf_line_count(source_info.bufnr)
     if source_info.start_pos[1] > original_lines or source_info.end_pos[1] > original_lines then
-      vim.notify('String Editor: Original file has been modified. Cannot safely save changes to the original location.',
-        vim.log.levels.ERROR)
-      return
+      return {
+        success = false,
+        error_code = 'INVALID_POSITION',
+        message = 'Original file has been modified. Cannot safely synchronize changes to the original location.',
+        suggestions = {
+          'Original file may have been edited externally',
+          'Try canceling and restarting the editing session',
+          'Check if file content has changed'
+        }
+      }
     end
-
-    -- Close the edit buffer first
-    buffer_manager.get_content_and_close(current_bufnr)
-
-    -- Switch to the original buffer
-    vim.api.nvim_set_current_buf(source_info.bufnr)
 
     -- Replace the string content in the original file
     -- Convert to 0-based positions for nvim_buf_set_text
@@ -526,6 +543,136 @@ function M.save()
 
     -- Replace the text in the original buffer
     vim.api.nvim_buf_set_text(source_info.bufnr, start_row, start_col, end_row, end_col, replacement_lines)
+
+    -- Update source_info with new end position after replacement
+    local new_end_row = start_row + #replacement_lines - 1
+    local new_end_col
+    if #replacement_lines == 1 then
+      -- Single line replacement: end column = start column + length of new content
+      new_end_col = start_col + #replacement_lines[1]
+    else
+      -- Multi-line replacement: end column = length of last line
+      new_end_col = #replacement_lines[#replacement_lines]
+    end
+
+    -- Update the stored source_info with new positions and content
+    source_info.end_pos = { new_end_row + 1, new_end_col } -- Convert back to 1-based
+    source_info.original_content = full_content
+    buffer_manager.store_source_info(current_bufnr, source_info)
+
+    return {
+      success = true,
+      message = 'Content synchronized successfully.',
+      data = {
+        changed = true,
+        content_length = #edited_content,
+        lines_replaced = #replacement_lines,
+        new_end_pos = source_info.end_pos
+      }
+    }
+  end)
+
+  if not success then
+    -- Provide more specific error messages
+    local error_msg = tostring(result)
+    if error_msg:find('Invalid buffer') then
+      return {
+        success = false,
+        error_code = 'BUFFER_ERROR',
+        message = 'Buffer operation failed. The buffer may have been closed or corrupted.',
+        suggestions = {
+          'Try restarting the editing session',
+          'Check if buffer is still valid'
+        }
+      }
+    elseif error_msg:find('position') then
+      return {
+        success = false,
+        error_code = 'POSITION_ERROR',
+        message = 'Position error occurred. The original file may have been modified.',
+        suggestions = {
+          'Check if original file has been modified',
+          'Try restarting the editing session'
+        }
+      }
+    else
+      return {
+        success = false,
+        error_code = 'UNEXPECTED_ERROR',
+        message = 'Unexpected error occurred while synchronizing: ' .. error_msg,
+        suggestions = {
+          'Check plugin installation and configuration',
+          'Check Neovim logs for detailed information',
+          'Try restarting Neovim'
+        }
+      }
+    end
+  end
+
+  return result
+end
+
+-- Save string to original file and close the editor buffer
+-- @return table API response
+function M.save()
+  -- Use pcall for comprehensive error handling
+  local success, result = pcall(function()
+    -- Get current buffer number
+    local current_bufnr = vim.api.nvim_get_current_buf()
+
+    -- Check if current buffer is a stringBreaker buffer
+    local filetype = vim.api.nvim_buf_get_option(current_bufnr, 'filetype')
+    if filetype ~= 'stringBreaker' then
+      return {
+        success = false,
+        error_code = 'NOT_IN_EDIT_BUFFER',
+        message = 'save() can only be used in string editor buffers. Current buffer type: ' .. (filetype or 'none'),
+        suggestions = {
+          'Ensure this function is called in string editor buffer',
+          'Use break_string() function to start editing string'
+        }
+      }
+    end
+
+    -- First, synchronize the content with the original file
+    local sync_result = M.sync()
+    if not sync_result.success then
+      return sync_result
+    end
+
+    -- Get source information for closing the buffer
+    local source_info = buffer_manager.get_source_info(current_bufnr)
+    if not source_info then
+      return {
+        success = false,
+        error_code = 'NO_SOURCE_INFO',
+        message =
+        'No source information found for this buffer. Content was synchronized but buffer cannot be closed properly.',
+        suggestions = {
+          'Manually close the buffer',
+          'Check if original buffer still exists'
+        }
+      }
+    end
+
+    -- Close the edit buffer
+    buffer_manager.get_content_and_close(current_bufnr)
+
+    -- Switch to the original buffer if it's still valid
+    if vim.api.nvim_buf_is_valid(source_info.bufnr) then
+      vim.api.nvim_set_current_buf(source_info.bufnr)
+    end
+
+    return {
+      success = true,
+      message = sync_result.data.changed and 'String saved and editor closed successfully.' or
+          'No changes detected. Editor closed without modifying original file.',
+      data = {
+        synchronized = sync_result.data.changed,
+        content_length = sync_result.data.content_length,
+        lines_replaced = sync_result.data.lines_replaced or 0
+      }
+    }
   end)
 
   if not success then
@@ -540,7 +687,15 @@ function M.save()
     else
       vim.notify('String Editor: Unexpected error occurred while saving: ' .. error_msg, vim.log.levels.ERROR)
     end
+
+    return {
+      success = false,
+      error_code = 'UNEXPECTED_ERROR',
+      message = 'Unexpected error occurred while saving: ' .. error_msg
+    }
   end
+
+  return result
 end
 
 -- Cancel editing without saving changes

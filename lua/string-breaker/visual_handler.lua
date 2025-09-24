@@ -1,8 +1,20 @@
 local M = {}
 
--- Get visual selection text and position information
--- @return table|nil Visual selection information or nil if no selection
-function M.get_visual_selection()
+
+function M.one_to_zero_index_position(position)
+  local start_row, start_col, end_row, end_col = position[1], position[2], position[3], position[4]
+  -- Convert 1-indexed to 0-indexed
+  --(last col is excludesive)
+  return { start_row - 1, start_col - 1, end_row - 1, end_col }
+end
+
+function M.zero_to_one_index_position(position)
+  local start_row, start_col, end_row, end_col = position[1], position[2], position[3], position[4]
+  -- Convert 1-indexed to 0-indexed
+  return { start_row + 1, start_col + 1, end_row + 1, end_col }
+end
+
+function M.get_visual_selection_range()
   local function compare_positions(pos1, pos2)
     -- Compare by line first, and by column second
     if pos1[2] < pos2[2] or (pos1[2] == pos2[2] and pos1[3] < pos2[3]) then
@@ -12,90 +24,57 @@ function M.get_visual_selection()
     end
   end
 
+  local visual_pos = vim.fn.getpos('v')
+  local cursor_pos = vim.fn.getpos('.')
 
+  local first_pos, sec_pos
+
+  -- Compare and assign
+  if compare_positions(visual_pos, cursor_pos) then
+    first_pos, sec_pos = visual_pos, cursor_pos
+  else
+    first_pos, sec_pos = cursor_pos, visual_pos
+  end
+
+  -- get vm mode
+  local mode = vim.fn.mode()
+
+  if mode == "V" then
+    print(first_pos[2], first_pos[3], sec_pos[2], sec_pos[3])
+    first_pos[3] = 1
+    local line_content = vim.fn.getline(sec_pos[2])
+    sec_pos[3] = #line_content
+  end
+
+  return M.one_to_zero_index_position({ first_pos[2], first_pos[3], sec_pos[2], sec_pos[3] })
+end
+
+-- Get visual selection text and position information
+-- @return table|nil Visual selection information or nil if no selection
+function M.get_visual_selection()
   -- Check if currently in visual mode
   local mode = vim.fn.mode()
   if mode ~= 'v' and mode ~= 'V' and mode ~= '\22' then -- \22 is Ctrl-V
     return nil
   end
-
-  local visual_pos = vim.fn.getpos('v')
-  local cursor_pos = vim.fn.getpos('.')
-
-  local start_pos, end_pos
-
-  -- Compare and assign
-  if compare_positions(visual_pos, cursor_pos) then
-    start_pos, end_pos = visual_pos, cursor_pos
-  else
-    start_pos, end_pos = cursor_pos, visual_pos
-  end
-
   local bufnr = vim.api.nvim_get_current_buf()
-  local start_row = start_pos[2] - 1 -- Convert to 0-based
-  local start_col = start_pos[3] - 1
-  local end_row = end_pos[2] - 1
-  local end_col = end_pos[3]
 
-  -- Validate line number range
-  local line_count = vim.api.nvim_buf_line_count(bufnr)
-  if start_row >= line_count or end_row >= line_count or start_row < 0 or end_row < 0 then
-    return nil
-  end
+  local selection_range = M.get_visual_selection_range()
+  local start_row, start_col, end_row, end_col = unpack(selection_range)
+  local lines = vim.api.nvim_buf_get_text(0, start_row, start_col, end_row, end_col, {})
+  local content = table.concat(lines, "\n")
 
-  -- Get selected text
-  local lines = vim.api.nvim_buf_get_lines(bufnr, start_row, end_row + 1, false)
-  if not lines or #lines == 0 then
-    return nil
-  end
-
-  local content = ""
-  if #lines == 1 then
-    -- Single line selection
-    local line = lines[1] or ""
-    if start_col >= #line then
-      return nil
-    end
-    -- For character visual mode, end_col needs adjustment
-    if mode == 'v' then
-      end_col = math.min(end_col, #line)
-    else
-      end_col = #line
-    end
-    content = string.sub(line, start_col + 1, end_col)
-  else
-    -- Multi-line selection
-    for i, line in ipairs(lines) do
-      if i == 1 then
-        -- First line: from start_col to end of line
-        if start_col < #line then
-          content = content .. string.sub(line, start_col + 1)
-        end
-      elseif i == #lines then
-        -- Last line: from beginning of line to end_col
-        if mode == 'v' then
-          -- Character visual mode
-          content = content .. "\n" .. string.sub(line, 1, math.min(end_col, #line))
-        else
-          -- Line visual mode or block visual mode
-          content = content .. "\n" .. line
-        end
-      else
-        -- Middle lines: complete lines
-        content = content .. "\n" .. line
-      end
-    end
-  end
 
   -- Validate content is not empty
   if not content or content == "" then
     return nil
   end
 
+
   return {
     content = content,
-    start_pos = { start_row + 1, start_col }, -- Convert back to 1-based
-    end_pos = { end_row + 1, end_col },       -- Adjust end_col
+    start_pos = { start_row + 1, start_col },
+    end_pos = { end_row + 1, end_col },
     mode = mode,
     bufnr = bufnr
   }

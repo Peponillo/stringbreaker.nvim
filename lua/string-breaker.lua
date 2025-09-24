@@ -29,10 +29,13 @@ function M.setup(opts)
     { desc = 'Cancel string editing without saving changes' })
 
   vim.api.nvim_create_user_command('SaveString', core.save, { desc = 'Save edited string back to original file' })
+  
+  vim.api.nvim_create_user_command('SyncString', core.sync, { desc = 'Synchronize string editor buffer with original file without closing' })
 end
 
 -- Export public functions
 M.save = core.save
+M.sync = core.sync
 M.break_string = core.break_string
 M.preview = core.preview
 M.cancel = core.cancel

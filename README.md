@@ -11,6 +11,8 @@ A powerful Neovim plugin that makes it easy to **edit escaped strings** in code.
 - 🎯 **Smart String Detection**: Automatically detect strings at cursor position using Tree-sitter
 - 👁️ **Visual Mode Support**: Select any text for editing, no Tree-sitter required  
 - 🔍 **Preview Functionality**: Quick preview of unescaped string content
+- 💾 **Native Vim Integration**: Use familiar `:w`, `:wq` commands alongside plugin commands
+- 🔄 **Flexible Sync Options**: Sync changes with or without closing the editor buffer
 - 🛠️ **Unified API**: Clean Lua API for scripts and plugin integration
 - 🔄 **Enhanced Buffer Management**: Optimized buffer handling and memory usage
 - ⚡ **Multi-mode Support**: Works in normal mode and visual mode seamlessly
@@ -58,15 +60,24 @@ use {
 1. **Position your cursor** inside any string in your code, or select text in visual mode
 2. **Run `:BreakString`** to open the string/text in an editing buffer
 3. **Edit the content** in the temporary buffer (escape sequences are automatically unescaped)
-4. **Run `:SaveString`** to save changes back to the original file
-5. **Or run `:BreakStringCancel`** to cancel editing without changes
+4. **Save changes** using either:
+   - `:SaveString` - Save and close the editor buffer
+   - `:wq` or `:w` - Standard Vim save commands (automatically syncs with original file)
+   - `:SyncString` - Sync changes without closing the buffer
+5. **Or cancel editing** with `:BreakStringCancel` or simply close the buffer without saving
 
 ### Commands
 
 - `:BreakString` - Extract and edit the string at cursor position or visual selection
 - `:PreviewString` - Preview unescaped string content without opening editor
-- `:SaveString` - Save edited content back to original file (only in string editor buffers)
+- `:SaveString` - Save edited content back to original file and close buffer
+- `:SyncString` - Synchronize changes with original file without closing buffer
 - `:BreakStringCancel` - Cancel editing without saving changes
+
+**Standard Vim commands also work:**
+- `:w` or `:write` - Save changes (automatically syncs with original file)
+- `:wq` - Save changes and close buffer
+- `:q!` - Close buffer without saving changes
 
 ### Example
 
@@ -82,7 +93,7 @@ const message = "Hello\\nWorld\\t\"Quote\"";
 Hello
 World	"Quote"
 ```
-4. Run `:SaveString` to update the original file
+4. Save changes using `:SaveString`, `:wq`, or `:w` to update the original file
 
 ## Usage Modes
 
@@ -167,7 +178,14 @@ if result.success then
   print("Content length: " .. result.data.length)
 end
 
--- Save changes (in editing buffer)
+-- Synchronize changes with original file (in editing buffer)
+local result = stringBreaker.sync()
+if result.success then
+  print("Synchronized:", result.data.changed)
+  print("Content length:", result.data.content_length)
+end
+
+-- Save changes and close buffer (in editing buffer)
 stringBreaker.save()
 
 -- Cancel editing (in editing buffer)  
