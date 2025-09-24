@@ -19,6 +19,50 @@ local config = {
   }
 }
 
+-- Check if Tree-sitter is available and properly configured
+local function check_treesitter()
+  -- Check if nvim-treesitter is available
+  local ok, ts = pcall(require, 'nvim-treesitter')
+  if not ok then
+    vim.notify(
+      'String Editor: nvim-treesitter plugin is required but not installed. Please install nvim-treesitter first.',
+      vim.log.levels.ERROR)
+    return false
+  end
+
+  -- Check if ts_utils is available
+  local ts_ok, ts_utils = pcall(require, 'nvim-treesitter.ts_utils')
+  if not ts_ok and not ts.get_installed then
+    vim.notify(
+      'String Editor: nvim-treesitter.ts_utils or treesitter **main** branch is required but not available. Please ensure nvim-treesitter is properly configured.',
+      vim.log.levels.ERROR)
+    return false
+  end
+
+  -- Check if parser is available for current buffer
+  local bufnr = vim.api.nvim_get_current_buf()
+  local filetype = vim.api.nvim_buf_get_option(bufnr, 'filetype')
+
+  if filetype == '' then
+    vim.notify(
+      'String Editor: No filetype detected for current buffer. Tree-sitter requires a valid filetype to parse strings.',
+      vim.log.levels.WARN)
+    return false
+  end
+
+  -- Try to get parser for current filetype
+  local parser_ok, parser = pcall(vim.treesitter.get_parser, bufnr, filetype)
+  if not parser_ok or not parser then
+    vim.notify(
+      string.format(
+        'String Editor: No Tree-sitter parser available for filetype "%s". Please install the parser or check your Tree-sitter configuration.',
+        filetype), vim.log.levels.WARN)
+    return false
+  end
+
+  return true
+end
+
 -- Get current mode
 -- @return string 'normal', 'visual', or 'unknown'
 function M._get_mode()
